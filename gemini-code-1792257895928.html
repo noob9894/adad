@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Friends Chat - Discord Style</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://meet.jit.si/external_api.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #2e3338; }
+        ::-webkit-scrollbar-thumb { background: #202225; border-radius: 3px; }
+    </style>
+</head>
+<body class="bg-[#36393f] text-[#dcddde] h-screen flex flex-col overflow-hidden">
+
+    <!-- Login Modal -->
+    <div id="loginModal" class="fixed inset-0 bg-black bg-opacity-85 flex items-center justify-center z-50 p-4">
+        <div class="bg-[#2f3136] p-8 rounded-2xl w-full max-w-md shadow-2xl border border-[#202225] text-center">
+            <h2 class="text-2xl font-bold mb-2 text-white">Welcome to Friends Chat</h2>
+            <p class="text-[#8e9297] mb-6 text-sm">Enter your username to join and start chatting.</p>
+            <input type="text" id="usernameInput" placeholder="Type your username..." class="w-full bg-[#202225] border-none rounded-xl px-4 py-3 text-white mb-4 focus:outline-none focus:ring-2 focus:ring-[#7289da]">
+            <button onclick="joinChat()" class="w-full bg-[#5865f2] hover:bg-[#4752c4] text-white font-bold py-3 rounded-xl transition shadow-lg">Join Chat</button>
+        </div>
+    </div>
+
+    <!-- GIF Picker Modal -->
+    <div id="gifModal" class="fixed inset-0 bg-black bg-opacity-60 hidden items-center justify-center z-50 p-4">
+        <div class="bg-[#2f3136] p-4 rounded-2xl w-full max-w-lg shadow-2xl border border-[#202225] flex flex-col h-96">
+            <div class="flex justify-between items-center mb-3">
+                <h3 class="text-white font-bold text-sm">Select a GIF</h3>
+                <button onclick="toggleGifModal()" class="text-[#8e9297] hover:text-white"><i class="fa-solid fa-xmark text-lg"></i></button>
+            </div>
+            <input type="text" id="gifSearchInput" placeholder="Search GIFs..." oninput="searchGifs(this.value)" class="w-full bg-[#202225] border-none rounded-lg px-3 py-2 text-white mb-3 text-sm focus:outline-none">
+            <div id="gifResults" class="flex-1 overflow-y-auto grid grid-cols-2 gap-2 pr-1">
+                <!-- GIFs loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Container Layout -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- Sidebar (Discord Style) -->
+        <aside class="w-72 bg-[#2f3136] border-r border-[#202225] flex flex-col shrink-0">
+            <div class="h-14 border-b border-[#202225] px-4 flex items-center shadow-sm font-bold text-white text-base">
+                <span>🚀 Friends Server</span>
+            </div>
+
+            <div class="flex-1 p-3 space-y-4 overflow-y-auto">
+                <div>
+                    <div class="text-xs font-bold text-[#8e9297] uppercase px-2 mb-1">Text Channels</div>
+                    <div class="flex items-center px-2.5 py-2 rounded-lg bg-[#4f545c] bg-opacity-40 text-white text-sm font-medium">
+                        <span># general-chat</span>
+                    </div>
+                </div>
+
+                <div>
+                    <div class="text-xs font-bold text-[#8e9297] uppercase px-2 mb-1">Voice & Screen Channels</div>
+                    <div class="bg-[#202225] rounded-xl p-2.5 space-y-2">
+                        <div class="flex items-center justify-between text-sm text-white font-medium px-1">
+                            <span class="flex items-center gap-1.5">🔊 Voice Lounge</span>
+                        </div>
+                        <button onclick="openVoiceRoom()" class="w-full bg-[#3ba55d] hover:bg-[#2d8548] text-white py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1">
+                            <i class="fa-solid fa-video"></i> Join Voice / Screen Room
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="h-14 bg-[#292b2f] px-3 flex items-center justify-between">
+                <div class="flex items-center space-x-3 truncate">
+                    <div class="w-9 h-9 rounded-full bg-[#5865f2] flex items-center justify-center font-bold text-white text-sm shrink-0" id="userAvatar">U</div>
+                    <div class="truncate text-sm font-semibold text-white">
+                        <span id="currentUserDisplay">Guest</span>
+                        <span id="adminBadge" class="hidden ml-1 text-[10px] bg-red-600 text-white px-1.5 py-0.5 rounded font-bold">ADMIN</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="flex-1 flex flex-col bg-[#36393f] relative overflow-hidden">
+
+            <header class="h-14 bg-[#36393f] border-b border-[#202225] px-4 flex justify-between items-center shadow-sm shrink-0">
+                <div class="flex items-center space-x-2">
+                    <span class="text-xl text-[#8e9297]">#</span>
+                    <h1 class="text-base font-bold text-white">general-chat</h1>
+                </div>
+                
+                <div class="flex items-center space-x-2">
+                    <button id="clearChatBtn" onclick="clearAllChat()" class="bg-red-600 hover:bg-red-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold transition hidden shadow">
+                        🗑️ Clear All Chat
+                    </button>
+                </div>
+            </header>
+
+            <!-- Jitsi Video / Screen Share Container -->
+            <div id="jitsiContainer" class="hidden flex-1 bg-black relative flex flex-col">
+                <div class="bg-[#2f3136] px-4 py-2 flex justify-between items-center border-b border-[#202225]">
+                    <span class="text-xs text-white font-bold">🔊 Voice & Screen Sharing Room</span>
+                    <button onclick="closeVoiceRoom()" class="bg-[#ed4245] text-white px-3 py-1 rounded text-xs font-bold">Leave Room</button>
+                </div>
+                <div id="jitsimeet" class="flex-1 w-full h-full"></div>
+            </div>
+
+            <!-- Messages Area -->
+            <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-4">
+                <!-- Messages injected here -->
+            </div>
+
+            <!-- File / Media Preview Box -->
+            <div id="mediaPreviewBox" class="hidden px-4 py-2 bg-[#2f3136] border-t border-[#202225] flex items-center justify-between">
+                <div class="flex items-center space-x-2">
+                    <img id="previewImage" class="h-10 w-10 object-cover rounded hidden">
+                    <i id="previewFileIcon" class="fa-solid fa-file-lines text-xl text-blue-400"></i>
+                    <span id="previewFileName" class="text-xs text-white truncate">File attached</span>
+                </div>
+                <button onclick="cancelMediaPreview()" class="text-red-400 text-xs">Remove</button>
+            </div>
+
+            <!-- Input Area -->
+            <div class="p-4 bg-[#36393f] shrink-0">
+                <div class="bg-[#40444b] rounded-xl px-4 py-2.5 flex items-center space-x-2">
+                    <label class="text-[#8e9297] hover:text-white cursor-pointer" title="Attach File or Image">
+                        <i class="fa-solid fa-paperclip text-lg"></i>
+                        <input type="file" id="fileInput" class="hidden" onchange="handleFileSelect(event)">
+                    </label>
+                    <button type="button" onclick="toggleGifModal()" class="text-[#8e9297] hover:text-white text-xs font-bold bg-[#2f3136] px-2 py-1 rounded border border-[#202225]" title="Send GIF">
+                        GIF
+                    </button>
+                    <button type="button" onclick="toggleVoiceRecording()" class="text-[#8e9297] hover:text-red-400 text-lg" title="Record Voice Note">
+                        <i class="fa-solid fa-microphone"></i>
+                    </button>
+                    <input type="text" id="messageInput" placeholder="Message #general-chat..." onkeypress="handleKeyPress(event)" class="w-full bg-transparent border-none text-[#dcddde] placeholder-[#72767d] focus:outline-none text-sm">
+                    <button onclick="sendMessage()" class="bg-[#5865f2] hover:bg-[#4752c4] text-white px-4 py-2 rounded-lg text-xs font-semibold transition">Send</button>
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <script>
+        const SUPABASE_URL = 'https://rncqecctwaghksibcvpu.supabase.co';
+        const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJuY3FlY2N0d2FnaGtzaWJjdnB1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTIyNDQ0NDYsImV4cCI6MjEwNzgyMDQ0Nn0.hHZjHv6XsOSIHM2bv1Zfqiiwkni60Yx3SvjpvxKssPw';
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+        let currentUser = '';
+        let isAdmin = false;
+        let pendingMediaData = null;
+        let pendingFileName = '';
+        let pendingFileType = 'text';
+        let jitsiApi = null;
+
+        let mediaRecorder = null;
+        let audioChunks = [];
+        let recordingTimerInterval = null;
+        let recordingSeconds = 0;
+
+        function joinChat() {
+            const input = document.getElementById('usernameInput').value.trim();
+            if (!input) {
+                alert('Please enter your username!');
+                return;
+            }
+            currentUser = input;
+            
+            if (currentUser.toLowerCase().includes('محمد') || currentUser.toLowerCase().includes('mohamed') || currentUser.toLowerCase().includes('muhammad')) {
+                isAdmin = true;
+                document.getElementById('adminBadge').classList.remove('hidden');
+                document.getElementById('clearChatBtn').classList.remove('hidden');
+            }
+
+            document.getElementById('currentUserDisplay').innerText = currentUser;
+            document.getElementById('userAvatar').innerText = currentUser.charAt(0).toUpperCase();
+            document.getElementById('loginModal').style.display = 'none';
+            fetchMessages();
+            setInterval(fetchMessages, 2000);
+
+            setInterval(clearChatDatabaseAuto, 300000);
+            loadGiphyTrending();
+        }
+
+        async function clearAllChat() {
+            if (!isAdmin) {
+                alert('You do not have admin permissions!');
+                return;
+            }
+            if (confirm('Are you sure you want to delete all chat messages?')) {
+                try {
+                    await supabaseClient.from('messages').delete().neq('id', 0);
+                    fetchMessages();
+                } catch (err) {
+                    console.error('Error clearing chat:', err);
+                }
+            }
+        }
+
+        async function clearChatDatabaseAuto() {
+            try {
+                await supabaseClient.from('messages').delete().neq('id', 0);
+                fetchMessages();
+            } catch (err) {
+                console.error('Error auto-clearing chat:', err);
+            }
+        }
+
+        function handleKeyPress(e) {
+            if (e.key === 'Enter') sendMessage();
+        }
+
+        async function sendMessage(customText = null, customType = 'text', customFileName = '') {
+            const input = document.getElementById('messageInput');
+            let textToSend = customText || input.value.trim();
+
+            if (!textToSend && !pendingMediaData) return;
+
+            let typeToSave = customType;
+            let fileNameToSave = customFileName;
+
+            if (pendingMediaData && !customText) {
+                textToSend = pendingMediaData;
+                typeToSave = pendingFileType;
+                fileNameToSave = pendingFileName;
+            }
+
+            const { error } = await supabaseClient
+                .from('messages')
+                .insert([{ user: currentUser, text: textToSend, type: typeToSave, filename: fileNameToSave }]);
+
+            if (error) {
+                console.error('Error sending message:', error);
+            } else {
+                if (!customText) input.value = '';
+                cancelMediaPreview();
+                fetchMessages();
+            }
+        }
+
+        async function fetchMessages() {
+            const { data, error } = await supabaseClient
+                .from('messages')
+                .select('*')
+                .order('id', { ascending: true });
+
+            if (error) return;
+            renderMessages(data);
+        }
+
+        function renderMessages(messages) {
+            const container = document.getElementById('chatMessages');
+            const isScrolledToBottom = container.scrollHeight - container.clientHeight <= container.scrollTop + 80;
+            
+            container.innerHTML = '';
+            if (!messages || messages.length === 0) {
+                container.innerHTML = `<div class="text-center text-[#8e9297] text-sm mt-10">No messages yet. Start the conversation!</div>`;
+                return;
+            }
+
+            messages.forEach(msg => {
+                const content = msg.text || '';
+                const type = msg.type || 'text';
+                const filename = msg.filename || 'download_file';
+                let renderedContent = '';
+
+                if (type === 'image' || content.startsWith('data:image')) {
+                    renderedContent = `<img src="${content}" class="rounded-xl max-w-xs max-h-60 object-cover mt-2 border border-slate-700 shadow">`;
+                } else if (type === 'audio' || content.startsWith('data:audio')) {
+                    renderedContent = `<audio controls src="${content}" class="max-w-xs h-10 mt-2 rounded-lg"></audio>`;
+                } else if (type === 'gif' || content.includes('giphy.com')) {
+                    renderedContent = `<img src="${content}" class="rounded-xl max-w-xs max-h-60 object-cover mt-2 border border-slate-700 shadow">`;
+                } else if (type === 'file') {
+                    renderedContent = `
+                        <div class="bg-[#2f3136] p-3 rounded-xl mt-2 flex items-center space-x-3 border border-[#202225] max-w-xs">
+                            <i class="fa-solid fa-file-arrow-down text-2xl text-[#5865f2]"></i>
+                            <div class="overflow-hidden flex-1">
+                                <p class="text-xs text-white font-bold truncate">${escapeHtml(filename)}</p>
+                                <a href="${content}" download="${filename}" class="text-[10px] text-blue-400 hover:underline">Download File</a>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    renderedContent = `<p class="text-sm text-[#dcddde] mt-0.5 break-words">${escapeHtml(content)}</p>`;
+                }
+
+                const isMsgAdmin = msg.user && (msg.user.toLowerCase().includes('محمد') || msg.user.toLowerCase().includes('mohamed') || msg.user.toLowerCase().includes('muhammad'));
+
+                const div = document.createElement('div');
+                div.className = 'flex items-start space-x-3 mt-2 hover:bg-[#32353b] p-2 rounded-lg transition';
+                div.innerHTML = `
+                    <div class="w-9 h-9 rounded-full bg-[#5865f2] flex items-center justify-center font-bold text-white text-sm shrink-0">${msg.user ? msg.user.charAt(0).toUpperCase() : 'U'}</div>
+                    <div class="overflow-hidden">
+                        <div class="flex items-center space-x-2">
+                            <span class="font-semibold text-white text-sm">${msg.user}</span>
+                            ${isMsgAdmin ? `<span class="text-[9px] bg-red-600 text-white px-1 py-0.5 rounded font-bold">ADMIN</span>` : ''}
+                            <span class="text-[10px] text-[#72767d]">Today</span>
+                        </div>
+                        ${renderedContent}
+                    </div>
+                `;
+                container.appendChild(div);
+            });
+
+            if (isScrolledToBottom) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+
+        function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            pendingFileName = file.name;
+            
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                pendingMediaData = evt.target.result;
+                
+                if (file.type.startsWith('image/')) {
+                    pendingFileType = 'image';
+                    document.getElementById('previewImage').src = pendingMediaData;
+                    document.getElementById('previewImage').classList.remove('hidden');
+                    document.getElementById('previewFileIcon').classList.add('hidden');
+                } else {
+                    pendingFileType = 'file';
+                    document.getElementById('previewImage').classList.add('hidden');
+                    document.getElementById('previewFileIcon').classList.remove('hidden');
+                }
+
+                document.getElementById('previewFileName').innerText = file.name;
+                document.getElementById('mediaPreviewBox').classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function cancelMediaPreview() {
+            pendingMediaData = null;
+            pendingFileName = '';
+            pendingFileType = 'text';
+            document.getElementById('fileInput').value = '';
+            document.getElementById('mediaPreviewBox').classList.add('hidden');
+        }
+
+        // GIF Management functions
+        function toggleGifModal() {
+            const modal = document.getElementById('gifModal');
+            if (modal.classList.contains('hidden')) {
+                modal.classList.remove('hidden');
+                modal.classList.add('flex');
+            } else {
+                modal.classList.add('hidden');
+                modal.classList.remove('flex');
+            }
+        }
+
+        async function loadGiphyTrending() {
+            try {
+                const res = await fetch('https://api.giphy.com/v1/gifs/trending?api_key=dc6zaTOxFJmzC&limit=16');
+                const data = await res.json();
+                displayGifs(data.data);
+            } catch (e) {
+                console.log('Error loading Giphy');
+            }
+        }
+
+        async function searchGifs(query) {
+            if (!query) {
+                loadGiphyTrending();
+                return;
+            }
+            try {
+                const res = await fetch(`https://api.giphy.com/v1/gifs/search?api_key=dc6zaTOxFJmzC&q=${encodeURIComponent(query)}&limit=16`);
+                const data = await res.json();
+                displayGifs(data.data);
+            } catch (e) {
+                console.log('Error searching Giphy');
+            }
+        }
+
+        function displayGifs(gifs) {
+            const container = document.getElementById('gifResults');
+            container.innerHTML = '';
+            gifs.forEach(gif => {
+                const url = gif.images.fixed_height_small.url;
+                const fullUrl = gif.images.original.url;
+                const img = document.createElement('img');
+                img.src = url;
+                img.className = 'w-full h-28 object-cover rounded cursor-pointer hover:opacity-85 transition border border-[#202225]';
+                img.onclick = () => {
+                    sendMessage(fullUrl, 'gif');
+                    toggleGifModal();
+                };
+                container.appendChild(img);
+            });
+        }
+
+        async function toggleVoiceRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                stopAndSendVoiceRecording();
+            } else {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    mediaRecorder = new MediaRecorder(stream);
+                    audioChunks = [];
+                    mediaRecorder.ondataavailable = e => {
+                        if (e.data.size > 0) audioChunks.push(e.data);
+                    };
+                    mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+                        const reader = new FileReader();
+                        reader.onloadend = async () => {
+                            const base64Audio = reader.result;
+                            if (base64Audio) {
+                                await sendMessage(base64Audio, 'audio');
+                            }
+                        };
+                        reader.readAsDataURL(audioBlob);
+                    };
+                    mediaRecorder.start();
+                    document.getElementById('recordingBar').classList.remove('hidden');
+                    startRecordingTimer();
+                } catch (err) {
+                    alert('Microphone access denied.');
+                }
+            }
+        }
+
+        function startRecordingTimer() {
+            recordingSeconds = 0;
+            document.getElementById('recordingTimer').innerText = '00:00';
+            recordingTimerInterval = setInterval(() => {
+                recordingSeconds++;
+                const mins = String(Math.floor(recordingSeconds / 60)).padStart(2, '0');
+                const secs = String(recordingSeconds % 60).padStart(2, '0');
+                document.getElementById('recordingTimer').innerText = `${mins}:${secs}`;
+            }, 1000);
+        }
+
+        function stopAndSendVoiceRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(t => t.stop());
+            }
+            clearInterval(recordingTimerInterval);
+            document.getElementById('recordingBar').classList.add('hidden');
+        }
+
+        function cancelVoiceRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                mediaRecorder.stream.getTracks().forEach(t => t.stop());
+            }
+            audioChunks = [];
+            clearInterval(recordingTimerInterval);
+            document.getElementById('recordingBar').classList.add('hidden');
+        }
+
+        function openVoiceRoom() {
+            document.getElementById('jitsiContainer').classList.remove('hidden');
+            document.getElementById('chatMessages').classList.add('hidden');
+            
+            const domain = "meet.jit.si";
+            const options = {
+                roomName: "MohamedSecretFriendsServerVoiceRoom2026X99",
+                width: "100%",
+                height: "100%",
+                parentNode: document.querySelector('#jitsimeet'),
+                userInfo: {
+                    displayName: currentUser
+                },
+                configOverwrite: {
+                    startWithAudioMuted: false,
+                    startWithVideoMuted: true,
+                    enableInsecureRoomNameWarning: false
+                },
+                interfaceConfigOverwrite: {
+                    DISABLE_JOIN_LEAVE_NOTIFICATIONS: true
+                }
+            };
+            if (!jitsiApi) {
+                jitsiApi = new JitsiMeetExternalAPI(domain, options);
+            }
+        }
+
+        function closeVoiceRoom() {
+            if (jitsiApi) {
+                jitsiApi.dispose();
+                jitsiApi = null;
+            }
+            document.getElementById('jitsimeet').innerHTML = '';
+            document.getElementById('jitsiContainer').classList.add('hidden');
+            document.getElementById('chatMessages').classList.remove('hidden');
+        }
+
+        function escapeHtml(text) {
+            return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+        }
+    </script>
+</body>
+</html>
